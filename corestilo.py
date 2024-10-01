@@ -231,30 +231,4 @@ if st.button("Corregir Texto"):
                     mensaje_corregido = respuesta_json.get("choices", [{}])[0].get("message", {}).get("content", "")
 
                     # Convertir la respuesta a HTML (asumiendo que la API devuelve texto plano)
-                    # Puedes ajustar esto según la respuesta real de la API
-                    mensaje_corregido_html = f"<p>{mensaje_corregido.replace('\n', '</p><p>')}</p>"
-
-                    # Reintegrar las notas a pie de página originales en el texto corregido
-                    mensaje_corregido_con_pies = reintegrar_pies(mensaje_corregido_html, pies_unicos)
-
-                    # Reintegrar las citas originales en el texto corregido con pies
-                    mensaje_corregido_final = reintegrar_citas(mensaje_corregido_con_pies, citas_unicas)
-
-                    # Mostrar el texto corregido en dos columnas
-                    col1, col2 = st.columns(2)
-
-                    with col1:
-                        st.subheader("Texto Corregido:")
-                        st.markdown(mensaje_corregido_final, unsafe_allow_html=True)
-
-                    with col2:
-                        st.subheader("Cambios Realizados:")
-                        # Resaltar diferencias entre el texto original y el corregido con citas y pies reintegrados
-                        diff_html = resaltar_diferencias(texto_usuario_html, mensaje_corregido_final)
-                        # Mostrar el HTML de las diferencias
-                        st.markdown(diff_html, unsafe_allow_html=True)
-                else:
-                    st.error(f"Error en la solicitud: {response.status_code}")
-                    st.text(response.text)
-            except Exception as e:
-                st.error(f"Ocurrió un error: {e}")
+          
