@@ -16,7 +16,8 @@ st.set_page_config(
 st.title("📝 Corrector de Texto: Ortografía, Gramática y Estilo")
 st.write(
     """
-    Esta aplicación permite corregir la ortografía, gramática y estilo de un texto de hasta **1000 palabras** utilizando la API de Together.
+    Esta aplicación permite corregir la ortografía, gramática y estilo de un texto de hasta **1000 palabras** utilizando la API de Together. 
+    **Nota:** El texto encerrado entre comillas (citas textuales) no será alterado durante la corrección.
     """
 )
 
@@ -24,6 +25,35 @@ st.write(
 def contar_palabras(texto):
     palabras = re.findall(r'\b\w+\b', texto)
     return len(palabras)
+
+# Función para extraer citas y reemplazarlas por marcadores
+def extraer_citas(texto):
+    """
+    Encuentra todas las citas textuales en el texto y las reemplaza por marcadores únicos.
+    Retorna el texto modificado y un diccionario de marcadores a citas.
+    """
+    # Patrón para encontrar texto entre comillas dobles o simples
+    patron = r'(["\'])(?:(?=(\\?))\2.)*?\1'
+    citas = re.findall(patron, texto)
+    citas_unicas = {}
+    texto_modificado = texto
+    for idx, cita in enumerate(citas, start=1):
+        marcador = f"__CITA_{idx}__"
+        # Extraer el texto completo de la cita
+        cita_completa = cita[0] + re.search(r'(["\'])(?:(?=(\\?))\2.)*?\1', texto_modificado).group(0)[1:-1] + cita[0]
+        citas_unicas[marcador] = cita_completa
+        # Reemplazar la primera ocurrencia de la cita por el marcador
+        texto_modificado = texto_modificado.replace(cita_completa, marcador, 1)
+    return texto_modificado, citas_unicas
+
+# Función para reintegrar las citas en el texto corregido
+def reintegrar_citas(texto_corregido, citas_unicas):
+    """
+    Reemplaza los marcadores en el texto corregido por las citas originales.
+    """
+    for marcador, cita in citas_unicas.items():
+        texto_corregido = texto_corregido.replace(marcador, cita)
+    return texto_corregido
 
 # Función para resaltar diferencias con colores específicos
 def resaltar_diferencias(original, corregido):
@@ -74,6 +104,9 @@ if st.button("Corregir Texto"):
     else:
         with st.spinner("Procesando..."):
             try:
+                # Extraer citas y obtener el texto sin alterar las citas
+                texto_sin_citas, citas_unicas = extraer_citas(texto_usuario)
+
                 # Obtener la clave de API de los secretos de Streamlit
                 api_key = st.secrets["TOGETHER_API_KEY"]
 
@@ -89,7 +122,7 @@ if st.button("Corregir Texto"):
                 # Crear el mensaje para la API
                 prompt = (
                     "Por favor, corrige el siguiente texto mejorando la ortografía, gramática y estilo:\n\n"
-                    f"{texto_usuario}"
+                    f"{texto_sin_citas}"
                 )
 
                 # Configurar el payload
@@ -115,18 +148,22 @@ if st.button("Corregir Texto"):
                 if response.status_code == 200:
                     respuesta_json = response.json()
                     # Extraer el contenido de la respuesta
-                    mensaje = respuesta_json.get("choices", [{}])[0].get("message", {}).get("content", "")
+                    mensaje_corregido = respuesta_json.get("choices", [{}])[0].get("message", {}).get("content", "")
+
+                    # Reintegrar las citas originales en el texto corregido
+                    mensaje_corregido_con_citas = reintegrar_citas(mensaje_corregido, citas_unicas)
 
                     # Mostrar el texto corregido en dos columnas
                     col1, col2 = st.columns(2)
 
                     with col1:
                         st.subheader("Texto Corregido:")
-                        st.write(mensaje)
+                        st.write(mensaje_corregido_con_citas)
 
                     with col2:
                         st.subheader("Cambios Realizados:")
-                        diff_html = resaltar_diferencias(texto_usuario, mensaje)
+                        # Resaltar diferencias entre el texto original y el corregido con citas reintegradas
+                        diff_html = resaltar_diferencias(texto_usuario, mensaje_corregido_con_citas)
                         # Mostrar el HTML de las diferencias
                         st.markdown(diff_html, unsafe_allow_html=True)
                 else:
