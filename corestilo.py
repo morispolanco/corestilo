@@ -2,10 +2,12 @@ import streamlit as st
 import requests
 import re
 from difflib import SequenceMatcher
+from bs4 import BeautifulSoup
+from streamlit_quill import st_quill
 from html import escape
 
 # Configuración de la página
-st.set_page_config(page_title="Corrector de Texto", layout="wide")
+st.set_page_config(page_title="Corrector de Texto Avanzado", layout="wide")
 
 # Título de la aplicación
 st.title("Corrector de Texto con Resaltado de Cambios")
@@ -13,50 +15,65 @@ st.title("Corrector de Texto con Resaltado de Cambios")
 # Instrucciones para el usuario
 st.markdown("""
 **Instrucciones:**
-- Pega tu texto (máximo 2000 palabras) en el área de texto.
+- Pega tu texto con formato (máximo 2000 palabras) en el editor de texto enriquecido.
 - La aplicación corregirá la ortografía, gramática y estilo.
 - Las notas a pie de página y citas textuales (entre comillas) no serán modificadas.
 - Los cambios se resaltarán en colores:
   - 🟨 **Amarillo**: Cambios realizados.
   - 🟥 **Rojo**: Eliminaciones.
   - 🟩 **Verde**: Adiciones.
+  
+**Nota:** Asegúrate de que las notas a pie de página estén en el formato `[1]`, `[2]`, etc., y que las citas textuales estén entre comillas dobles `"cita"`.
 """)
 
-# Área de texto para la entrada del usuario
-user_input = st.text_area("Pega tu texto aquí:", height=300)
+# Editor de texto enriquecido para la entrada del usuario
+user_input_html = st_quill(
+    "Editor de Texto:",
+    placeholder="Pega tu texto con formato aquí...",
+    theme="snow",
+    height=300,
+)
 
-# Función para contar palabras
+# Función para contar palabras (considerando texto plano)
 def count_words(text):
     return len(re.findall(r'\b\w+\b', text))
 
 # Función para proteger notas a pie de página y citas textuales
-def protect_text(text):
-    footnotes = re.findall(r'\[\d+\]', text)  # Ejemplo: [1], [2], etc.
-    quotes = re.findall(r'\"(.*?)\"', text)  # Texto entre comillas dobles
-
-    protected = text
+def protect_text(html):
+    soup = BeautifulSoup(html, "lxml")
     placeholders = {}
 
-    # Reemplazar citas textuales con marcadores
+    # Proteger citas textuales (texto entre comillas dobles)
+    quotes = soup.find_all(string=re.compile(r'"[^"]+"'))
     for idx, quote in enumerate(quotes):
+        original_quote = quote.strip()
         placeholder = f"__QUOTE_{idx}__"
-        placeholders[placeholder] = quote
-        protected = protected.replace(f'"{quote}"', placeholder)
+        placeholders[placeholder] = original_quote
+        new_quote = original_quote.replace(original_quote, placeholder)
+        quote.replace_with(new_quote)
 
-    # Reemplazar notas a pie de página con marcadores
+    # Proteger notas a pie de página en formato [1], [2], etc.
+    footnotes = soup.find_all(string=re.compile(r'\[\d+\]'))
     for idx, footnote in enumerate(footnotes):
+        original_footnote = footnote.strip()
         placeholder = f"__FOOTNOTE_{idx}__"
-        placeholders[placeholder] = footnote
-        protected = protected.replace(footnote, placeholder)
+        placeholders[placeholder] = original_footnote
+        new_footnote = original_footnote.replace(original_footnote, placeholder)
+        footnote.replace_with(new_footnote)
 
-    return protected, placeholders
+    protected_html = str(soup)
+    return protected_html, placeholders
 
 # Función para restaurar notas a pie de página y citas textuales
-def restore_text(text, placeholders):
-    restored = text
+def restore_text(html, placeholders):
     for placeholder, original in placeholders.items():
-        restored = restored.replace(placeholder, original)
-    return restored
+        html = html.replace(placeholder, original)
+    return html
+
+# Función para extraer texto plano del HTML
+def extract_text(html):
+    soup = BeautifulSoup(html, "lxml")
+    return soup.get_text()
 
 # Función para llamar a la API de Together
 def correct_text(text, api_key):
@@ -118,16 +135,21 @@ def highlight_changes(original, corrected):
 
 # Botón para iniciar la corrección
 if st.button("Corregir Texto"):
-    if not user_input.strip():
+    if not user_input_html.strip():
         st.warning("Por favor, ingresa un texto para corregir.")
     else:
-        total_words = count_words(user_input)
+        # Extraer texto plano para contar palabras
+        plain_text = extract_text(user_input_html)
+        total_words = count_words(plain_text)
         if total_words > 2000:
             st.error(f"El texto excede el límite de 2000 palabras. Actualmente tiene {total_words} palabras.")
         else:
             with st.spinner("Corrigiendo el texto..."):
                 # Proteger las notas a pie de página y las citas textuales
-                protected_text, placeholders = protect_text(user_input)
+                protected_html, placeholders = protect_text(user_input_html)
+
+                # Extraer texto plano del HTML protegido
+                protected_text = extract_text(protected_html)
 
                 # Llamar a la API con el texto protegido
                 api_key = st.secrets["together_api_key"]
@@ -135,17 +157,33 @@ if st.button("Corregir Texto"):
 
                 if corrected_protected:
                     # Restaurar las notas a pie de página y las citas textuales
-                    corrected = restore_text(corrected_protected, placeholders)
+                    corrected_html = restore_text(protected_html, placeholders)
+
+                    # Reemplazar el texto corregido en el HTML
+                    # Convertir el texto corregido de la API a HTML básico
+                    # Para simplificar, asumiremos que la API devuelve texto plano
+                    # y lo insertaremos en el HTML protegido
+
+                    # Reemplazar el texto plano corregido en el HTML
+                    soup_corrected = BeautifulSoup(corrected_html, "lxml")
+                    # Limpiar el HTML para reemplazar solo el contenido de texto
+                    for elem in soup_corrected.find_all(text=True):
+                        if "__QUOTE_" not in elem and "__FOOTNOTE_" not in elem:
+                            corrected_text = corrected_protected
+                            elem.replace_with(corrected_text)
+
+                    # Extraer el texto corregido con placeholders restaurados
+                    corrected_restored = restore_text(str(soup_corrected), placeholders)
 
                     # Resaltar los cambios
-                    highlighted_text = highlight_changes(user_input, corrected)
+                    highlighted_text = highlight_changes(plain_text, corrected_restored)
 
                     # Dividir la página en dos columnas
                     col1, col2 = st.columns(2)
 
                     with col1:
                         st.header("Texto Original")
-                        st.write(user_input)
+                        st.markdown(user_input_html, unsafe_allow_html=True)
 
                     with col2:
                         st.header("Texto Corregido")
