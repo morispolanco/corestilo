@@ -3,7 +3,6 @@ import requests
 import re
 from difflib import SequenceMatcher
 from bs4 import BeautifulSoup
-from streamlit_quill import st_quill
 from html import escape
 
 # Configuración de la página
@@ -15,7 +14,7 @@ st.title("Corrector de Texto con Resaltado de Cambios")
 # Instrucciones para el usuario
 st.markdown("""
 **Instrucciones:**
-- Pega tu texto con formato (máximo 2000 palabras) en el editor de texto enriquecido.
+- Pega tu texto (máximo 2000 palabras) en el área de texto.
 - La aplicación corregirá la ortografía, gramática y estilo.
 - Las notas a pie de página y citas textuales (entre comillas) no serán modificadas.
 - Los cambios se resaltarán en colores:
@@ -26,54 +25,39 @@ st.markdown("""
 **Nota:** Asegúrate de que las notas a pie de página estén en el formato `[1]`, `[2]`, etc., y que las citas textuales estén entre comillas dobles `"cita"`.
 """)
 
-# Editor de texto enriquecido para la entrada del usuario
-user_input_html = st_quill(
-    label="Editor de Texto:",
-    placeholder="Pega tu texto con formato aquí...",
-    theme="snow",
-    height=300,
-)
+# Área de texto para la entrada del usuario
+user_input = st.text_area("Pega tu texto aquí:", height=400)
 
-# Función para contar palabras (considerando texto plano)
+# Función para contar palabras
 def count_words(text):
     return len(re.findall(r'\b\w+\b', text))
 
 # Función para proteger notas a pie de página y citas textuales
-def protect_text(html):
-    soup = BeautifulSoup(html, "lxml")
+def protect_text(text):
     placeholders = {}
+    protected_text = text
 
     # Proteger citas textuales (texto entre comillas dobles)
-    quotes = soup.find_all(string=re.compile(r'"[^"]+"'))
+    quotes = re.findall(r'"(.*?)"', protected_text)
     for idx, quote in enumerate(quotes):
-        original_quote = quote.strip()
         placeholder = f"__QUOTE_{idx}__"
-        placeholders[placeholder] = original_quote
-        new_quote = original_quote.replace(original_quote, placeholder)
-        quote.replace_with(new_quote)
+        placeholders[placeholder] = f'"{quote}"'
+        protected_text = protected_text.replace(f'"{quote}"', placeholder)
 
     # Proteger notas a pie de página en formato [1], [2], etc.
-    footnotes = soup.find_all(string=re.compile(r'\[\d+\]'))
+    footnotes = re.findall(r'\[\d+\]', protected_text)
     for idx, footnote in enumerate(footnotes):
-        original_footnote = footnote.strip()
         placeholder = f"__FOOTNOTE_{idx}__"
-        placeholders[placeholder] = original_footnote
-        new_footnote = original_footnote.replace(original_footnote, placeholder)
-        footnote.replace_with(new_footnote)
+        placeholders[placeholder] = footnote
+        protected_text = protected_text.replace(footnote, placeholder)
 
-    protected_html = str(soup)
-    return protected_html, placeholders
+    return protected_text, placeholders
 
 # Función para restaurar notas a pie de página y citas textuales
-def restore_text(html, placeholders):
+def restore_text(text, placeholders):
     for placeholder, original in placeholders.items():
-        html = html.replace(placeholder, original)
-    return html
-
-# Función para extraer texto plano del HTML
-def extract_text(html):
-    soup = BeautifulSoup(html, "lxml")
-    return soup.get_text()
+        text = text.replace(placeholder, original)
+    return text
 
 # Función para llamar a la API de Together
 def correct_text(text, api_key):
@@ -107,15 +91,18 @@ def correct_text(text, api_key):
         "stream": False  # Cambiado a False para simplificar
     }
 
-    response = requests.post(url, headers=headers, json=payload)
-
-    if response.status_code == 200:
+    try:
+        response = requests.post(url, headers=headers, json=payload)
+        response.raise_for_status()
         data = response.json()
         # Asumiendo que la respuesta contiene el texto corregido en 'choices'[0]['message']['content']
         corrected_text = data.get("choices", [{}])[0].get("message", {}).get("content", "")
         return corrected_text
-    else:
+    except requests.exceptions.HTTPError as http_err:
         st.error(f"Error en la API: {response.status_code} - {response.text}")
+        return None
+    except Exception as err:
+        st.error(f"Error inesperado: {err}")
         return None
 
 # Función para resaltar los cambios
@@ -135,21 +122,16 @@ def highlight_changes(original, corrected):
 
 # Botón para iniciar la corrección
 if st.button("Corregir Texto"):
-    if not user_input_html.strip():
+    if not user_input.strip():
         st.warning("Por favor, ingresa un texto para corregir.")
     else:
-        # Extraer texto plano para contar palabras
-        plain_text = extract_text(user_input_html)
-        total_words = count_words(plain_text)
+        total_words = count_words(user_input)
         if total_words > 2000:
             st.error(f"El texto excede el límite de 2000 palabras. Actualmente tiene {total_words} palabras.")
         else:
             with st.spinner("Corrigiendo el texto..."):
                 # Proteger las notas a pie de página y las citas textuales
-                protected_html, placeholders = protect_text(user_input_html)
-
-                # Extraer texto plano del HTML protegido
-                protected_text = extract_text(protected_html)
+                protected_text, placeholders = protect_text(user_input)
 
                 # Llamar a la API con el texto protegido
                 api_key = st.secrets["together_api_key"]
@@ -157,21 +139,17 @@ if st.button("Corregir Texto"):
 
                 if corrected_protected:
                     # Restaurar las notas a pie de página y las citas textuales
-                    corrected_html = restore_text(protected_html, placeholders)
-
-                    # Aquí es donde podrías necesitar ajustar cómo se inserta el texto corregido.
-                    # Actualmente, se asume que la API devuelve texto plano.
-                    # Para una integración más precisa, podrías necesitar parsear y reemplazar segmentos específicos.
+                    corrected = restore_text(corrected_protected, placeholders)
 
                     # Resaltar los cambios
-                    highlighted_text = highlight_changes(plain_text, corrected_protected)
+                    highlighted_text = highlight_changes(user_input, corrected)
 
                     # Dividir la página en dos columnas
                     col1, col2 = st.columns(2)
 
                     with col1:
                         st.header("Texto Original")
-                        st.markdown(user_input_html, unsafe_allow_html=True)
+                        st.write(user_input)
 
                     with col2:
                         st.header("Texto Corregido")
