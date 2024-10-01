@@ -22,13 +22,13 @@ st.markdown("""
   - 🟨 **Amarillo**: Cambios realizados.
   - 🟥 **Rojo**: Eliminaciones.
   - 🟩 **Verde**: Adiciones.
-  
+
 **Nota:** Asegúrate de que las notas a pie de página estén en el formato `[1]`, `[2]`, etc., y que las citas textuales estén entre comillas dobles `"cita"`.
 """)
 
 # Editor de texto enriquecido para la entrada del usuario
 user_input_html = st_quill(
-    "Editor de Texto:",
+    label="Editor de Texto:",
     placeholder="Pega tu texto con formato aquí...",
     theme="snow",
     height=300,
@@ -159,24 +159,12 @@ if st.button("Corregir Texto"):
                     # Restaurar las notas a pie de página y las citas textuales
                     corrected_html = restore_text(protected_html, placeholders)
 
-                    # Reemplazar el texto corregido en el HTML
-                    # Convertir el texto corregido de la API a HTML básico
-                    # Para simplificar, asumiremos que la API devuelve texto plano
-                    # y lo insertaremos en el HTML protegido
-
-                    # Reemplazar el texto plano corregido en el HTML
-                    soup_corrected = BeautifulSoup(corrected_html, "lxml")
-                    # Limpiar el HTML para reemplazar solo el contenido de texto
-                    for elem in soup_corrected.find_all(text=True):
-                        if "__QUOTE_" not in elem and "__FOOTNOTE_" not in elem:
-                            corrected_text = corrected_protected
-                            elem.replace_with(corrected_text)
-
-                    # Extraer el texto corregido con placeholders restaurados
-                    corrected_restored = restore_text(str(soup_corrected), placeholders)
+                    # Aquí es donde podrías necesitar ajustar cómo se inserta el texto corregido.
+                    # Actualmente, se asume que la API devuelve texto plano.
+                    # Para una integración más precisa, podrías necesitar parsear y reemplazar segmentos específicos.
 
                     # Resaltar los cambios
-                    highlighted_text = highlight_changes(plain_text, corrected_restored)
+                    highlighted_text = highlight_changes(plain_text, corrected_protected)
 
                     # Dividir la página en dos columnas
                     col1, col2 = st.columns(2)
