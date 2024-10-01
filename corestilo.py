@@ -4,6 +4,8 @@ import json
 import re
 import difflib
 from html import escape
+from bs4 import BeautifulSoup
+from streamlit_quill import st_quill
 
 # Configuración de la página
 st.set_page_config(
@@ -17,7 +19,7 @@ st.title("📝 Corrector de Texto: Ortografía, Gramática y Estilo")
 st.write(
     """
     Esta aplicación permite corregir la ortografía, gramática y estilo de un texto de hasta **1000 palabras** utilizando la API de Together.
-    **Nota:** El texto encerrado entre comillas (citas textuales) y las notas a pie de página no serán alterados durante la corrección.
+    **Nota:** El texto enriquecido (RichText) permite incluir citas textuales y notas a pie de página que no serán alterados durante la corrección.
     """
 )
 
@@ -27,21 +29,24 @@ def contar_palabras(texto):
     return len(palabras)
 
 # Función para extraer citas textuales y reemplazarlas por marcadores
-def extraer_citas(texto):
+def extraer_citas(texto_html):
     """
     Encuentra todas las citas textuales en el texto y las reemplaza por marcadores únicos.
     Retorna el texto modificado y un diccionario de marcadores a citas.
     """
     citas_unicas = {}
-    texto_modificado = texto
+    texto_modificado = texto_html
     marcador_idx = 1
 
-    # Patrón para encontrar texto entre comillas dobles o simples
-    patron_citas = r'(["\'])(?:(?=(\\?))\2.)*?\1'
+    # Usamos BeautifulSoup para analizar el HTML
+    soup = BeautifulSoup(texto_html, 'html.parser')
 
-    # Encontrar todas las citas
-    for match in re.finditer(patron_citas, texto):
-        cita_completa = match.group(0)
+    # Encontrar todas las etiquetas <blockquote> o etiquetas con estilo de cita
+    # Aquí asumimos que las citas están en <blockquote> o <em>/<i>
+    citas = soup.find_all(['blockquote', 'em', 'i'])
+
+    for cita in citas:
+        cita_completa = str(cita)
         marcador = f"__QUOTE_{marcador_idx}__"
         citas_unicas[marcador] = cita_completa
         texto_modificado = texto_modificado.replace(cita_completa, marcador, 1)
@@ -50,39 +55,37 @@ def extraer_citas(texto):
     return texto_modificado, citas_unicas
 
 # Función para extraer notas a pie de página y reemplazarlas por marcadores
-def extraer_pies(texto):
+def extraer_pies(texto_html):
     """
     Encuentra todas las referencias y definiciones de notas a pie de página en el texto y las reemplaza por marcadores únicos.
     Retorna el texto modificado y un diccionario de marcadores a pies de página.
     """
     pies_unicos = {}
-    texto_modificado = texto
+    texto_modificado = texto_html
     marcador_ref_idx = 1
     marcador_def_idx = 1
 
-    # Patrón para referencias de notas a pie de página, por ejemplo: [^1], [^a], etc.
-    patron_referencias = r'\[\^[^\]]+\]'
-    referencias = re.finditer(patron_referencias, texto)
+    # Usamos BeautifulSoup para analizar el HTML
+    soup = BeautifulSoup(texto_html, 'html.parser')
 
-    # Reemplazar referencias
-    for match in referencias:
-        ref = match.group(0)
+    # Encontrar todas las referencias de notas a pie de página, asumiendo que están en <sup>
+    referencias = soup.find_all('sup')
+
+    for ref in referencias:
+        ref_completa = str(ref)
         marcador = f"__FOOTNOTE_REF_{marcador_ref_idx}__"
-        pies_unicos[marcador] = ref
-        texto_modificado = texto_modificado.replace(ref, marcador, 1)
+        pies_unicos[marcador] = ref_completa
+        texto_modificado = texto_modificado.replace(ref_completa, marcador, 1)
         marcador_ref_idx += 1
 
-    # Patrón para definiciones de notas a pie de página, por ejemplo: [^1]: Texto de la nota
-    # Incluye múltiples líneas si están indentadas
-    patron_definiciones = r'\[\^[^\]]+\]:\s*.*(?:\n\s+.*)*'
-    definiciones = re.finditer(patron_definiciones, texto_modificado, re.MULTILINE)
+    # Encontrar definiciones de notas a pie de página, asumiendo que están en <div class="footnote">
+    definiciones = soup.find_all('div', class_='footnote')
 
-    # Reemplazar definiciones
-    for match in definiciones:
-        defn = match.group(0)
+    for defn in definiciones:
+        defn_completa = str(defn)
         marcador = f"__FOOTNOTE_DEF_{marcador_def_idx}__"
-        pies_unicos[marcador] = defn
-        texto_modificado = texto_modificado.replace(defn, marcador, 1)
+        pies_unicos[marcador] = defn_completa
+        texto_modificado = texto_modificado.replace(defn_completa, marcador, 1)
         marcador_def_idx += 1
 
     return texto_modificado, pies_unicos
@@ -113,36 +116,65 @@ def resaltar_diferencias(original, corregido):
     - Verde para adiciones
     - Amarillo para modificaciones
     """
-    matcher = difflib.SequenceMatcher(None, original, corregido)
+    # Extraer texto plano para comparación
+    soup_original = BeautifulSoup(original, 'html.parser')
+    texto_original = soup_original.get_text()
+
+    soup_corregido = BeautifulSoup(corregido, 'html.parser')
+    texto_corregido = soup_corregido.get_text()
+
+    matcher = difflib.SequenceMatcher(None, texto_original, texto_corregido)
     result = []
 
     for tag, i1, i2, j1, j2 in matcher.get_opcodes():
         if tag == 'equal':
-            result.append(escape(corregido[j1:j2]))
+            result.append(escape(texto_corregido[j1:j2]))
         elif tag == 'delete':
             # Eliminaciones: Mostrar texto eliminado en rojo con tachado
-            eliminado = escape(original[i1:i2])
+            eliminado = escape(texto_original[i1:i2])
             result.append(f"<span style='color:red;text-decoration:line-through;'>{eliminado}</span>")
         elif tag == 'insert':
             # Adiciones: Mostrar texto añadido en verde
-            añadido = escape(corregido[j1:j2])
+            añadido = escape(texto_corregido[j1:j2])
             result.append(f"<span style='color:green;'>{añadido}</span>")
         elif tag == 'replace':
             # Modificaciones: Mostrar texto original en rojo tachado y el nuevo en amarillo
-            original_text = escape(original[i1:i2])
-            corregido_text = escape(corregido[j1:j2])
+            original_text = escape(texto_original[i1:i2])
+            corregido_text = escape(texto_corregido[j1:j2])
             result.append(f"<span style='color:red;text-decoration:line-through;'>{original_text}</span> <span style='background-color:yellow;'>{corregido_text}</span>")
     # Unir todas las partes
     return ''.join(result)
 
-# Entrada de texto por el usuario
-texto_usuario = st.text_area(
+# Entrada de texto RichText por el usuario usando streamlit-quill
+texto_usuario_html = st_quill(
     "Ingrese el texto que desea corregir (máximo 1000 palabras):",
+    placeholder="Escribe o pega tu texto aquí...",
+    theme="snow",
     height=300,
+    toolbar=[
+        ['bold', 'italic', 'underline', 'strike'],        # toggled buttons
+        ['blockquote', 'code-block'],
+
+        [{'header': 1}, {'header': 2}],               # custom button values
+        [{'list': 'ordered'}, {'list': 'bullet'}],
+        [{'script': 'sub'}, {'script': 'super'}],      # superscript/subscript
+        [{'indent': '-1'}, {'indent': '+1'}],          # outdent/indent
+        [{'direction': 'rtl'}],                         # text direction
+
+        [{'size': ['small', False, 'large', 'huge']}],  # custom dropdown
+        [{'header': [1, 2, 3, 4, 5, 6, False]}],
+
+        [{'color': []}, {'background': []}],          # dropdown with defaults from theme
+        [{'font': []}],
+        [{'align': []}],
+
+        ['clean'],                                         # remove formatting button
+        ['link', 'image', 'video']                         # link and image, video
+    ],
 )
 
 # Mostrar el contador de palabras
-num_palabras = contar_palabras(texto_usuario)
+num_palabras = contar_palabras(BeautifulSoup(texto_usuario_html, 'html.parser').get_text())
 st.write(f"**Número de palabras:** {num_palabras}/1000")
 
 # Botón para enviar el texto
@@ -155,7 +187,7 @@ if st.button("Corregir Texto"):
         with st.spinner("Procesando..."):
             try:
                 # Extraer citas y obtener el texto sin alterar las citas
-                texto_sin_citas, citas_unicas = extraer_citas(texto_usuario)
+                texto_sin_citas, citas_unicas = extraer_citas(texto_usuario_html)
 
                 # Extraer pies de página y obtener el texto sin alterar las notas
                 texto_sin_citas_pies, pies_unicos = extraer_pies(texto_sin_citas)
@@ -203,8 +235,12 @@ if st.button("Corregir Texto"):
                     # Extraer el contenido de la respuesta
                     mensaje_corregido = respuesta_json.get("choices", [{}])[0].get("message", {}).get("content", "")
 
+                    # Convertir la respuesta a HTML (asumiendo que la API devuelve texto plano)
+                    # Puedes ajustar esto según la respuesta real de la API
+                    mensaje_corregido_html = f"<p>{mensaje_corregido.replace('\n', '</p><p>')}</p>"
+
                     # Reintegrar las notas a pie de página originales en el texto corregido
-                    mensaje_corregido_con_pies = reintegrar_pies(mensaje_corregido, pies_unicos)
+                    mensaje_corregido_con_pies = reintegrar_pies(mensaje_corregido_html, pies_unicos)
 
                     # Reintegrar las citas originales en el texto corregido con pies
                     mensaje_corregido_final = reintegrar_citas(mensaje_corregido_con_pies, citas_unicas)
@@ -214,12 +250,12 @@ if st.button("Corregir Texto"):
 
                     with col1:
                         st.subheader("Texto Corregido:")
-                        st.markdown(mensaje_corregido_final)
+                        st.markdown(mensaje_corregido_final, unsafe_allow_html=True)
 
                     with col2:
                         st.subheader("Cambios Realizados:")
                         # Resaltar diferencias entre el texto original y el corregido con citas y pies reintegrados
-                        diff_html = resaltar_diferencias(texto_usuario, mensaje_corregido_final)
+                        diff_html = resaltar_diferencias(texto_usuario_html, mensaje_corregido_final)
                         # Mostrar el HTML de las diferencias
                         st.markdown(diff_html, unsafe_allow_html=True)
                 else:
