@@ -2,6 +2,8 @@ import streamlit as st
 import requests
 import json
 import re
+import difflib
+from html import escape
 
 # Configuración de la página
 st.set_page_config(
@@ -22,6 +24,20 @@ st.write(
 def contar_palabras(texto):
     palabras = re.findall(r'\b\w+\b', texto)
     return len(palabras)
+
+# Función para resaltar diferencias
+def resaltar_diferencias(original, corregido):
+    # Escapar HTML para evitar problemas de formato
+    original_esc = escape(original)
+    corregido_esc = escape(corregido)
+    
+    # Crear un objeto Differ
+    differ = difflib.HtmlDiff()
+    
+    # Generar la tabla de diferencias
+    diff_html = differ.make_table(original_esc.splitlines(), corregido_esc.splitlines(), fromdesc='Original', todesc='Corregido', context=True, numlines=2)
+    
+    return diff_html
 
 # Entrada de texto por el usuario
 texto_usuario = st.text_area(
@@ -85,9 +101,18 @@ if st.button("Corregir Texto"):
                     # Extraer el contenido de la respuesta
                     mensaje = respuesta_json.get("choices", [{}])[0].get("message", {}).get("content", "")
 
-                    # Mostrar el texto corregido
-                    st.subheader("Texto Corregido:")
-                    st.write(mensaje)
+                    # Mostrar el texto corregido en dos columnas
+                    col1, col2 = st.columns(2)
+
+                    with col1:
+                        st.subheader("Texto Corregido:")
+                        st.write(mensaje)
+
+                    with col2:
+                        st.subheader("Cambios Realizados:")
+                        diff_html = resaltar_diferencias(texto_usuario, mensaje)
+                        # Mostrar el HTML de las diferencias
+                        st.markdown(diff_html, unsafe_allow_html=True)
                 else:
                     st.error(f"Error en la solicitud: {response.status_code}")
                     st.text(response.text)
