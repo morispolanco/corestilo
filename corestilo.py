@@ -41,8 +41,7 @@ def extraer_citas(texto_html):
     # Usamos BeautifulSoup para analizar el HTML
     soup = BeautifulSoup(texto_html, 'html.parser')
 
-    # Encontrar todas las etiquetas <blockquote> o etiquetas con estilo de cita
-    # Aquí asumimos que las citas están en <blockquote> o <em>/<i>
+    # Encontrar todas las etiquetas <blockquote>, <em>, o <i> que suelen contener citas
     citas = soup.find_all(['blockquote', 'em', 'i'])
 
     for cita in citas:
@@ -152,24 +151,20 @@ texto_usuario_html = st_quill(
     theme="snow",
     height=300,
     toolbar=[
-        ['bold', 'italic', 'underline', 'strike'],        # toggled buttons
+        ['bold', 'italic', 'underline', 'strike'],        # Botones alternados
         ['blockquote', 'code-block'],
-
-        [{'header': 1}, {'header': 2}],               # custom button values
+        [{'header': 1}, {'header': 2}],                   # Valores de botones personalizados
         [{'list': 'ordered'}, {'list': 'bullet'}],
-        [{'script': 'sub'}, {'script': 'super'}],      # superscript/subscript
-        [{'indent': '-1'}, {'indent': '+1'}],          # outdent/indent
-        [{'direction': 'rtl'}],                         # text direction
-
-        [{'size': ['small', False, 'large', 'huge']}],  # custom dropdown
+        [{'script': 'sub'}, {'script': 'super'}],         # Subíndice/Superscript
+        [{'indent': '-1'}, {'indent': '+1'}],             # Outdent/Indent
+        [{'direction': 'rtl'}],                            # Dirección del texto
+        [{'size': ['small', False, 'large', 'huge']}],    # Dropdown personalizado
         [{'header': [1, 2, 3, 4, 5, 6, False]}],
-
-        [{'color': []}, {'background': []}],          # dropdown with defaults from theme
+        [{'color': []}, {'background': []}],              # Dropdown con valores por defecto del tema
         [{'font': []}],
         [{'align': []}],
-
-        ['clean'],                                         # remove formatting button
-        ['link', 'image', 'video']                         # link and image, video
+        ['clean'],                                         # Botón para eliminar formato
+        ['link', 'image', 'video']                        # Enlace, imagen, video
     ],
 )
 
