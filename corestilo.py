@@ -29,6 +29,35 @@ user_input = st.text_area("Pega tu texto aquí:", height=300)
 def count_words(text):
     return len(re.findall(r'\b\w+\b', text))
 
+# Función para proteger notas a pie de página y citas textuales
+def protect_text(text):
+    footnotes = re.findall(r'\[\d+\]', text)  # Ejemplo: [1], [2], etc.
+    quotes = re.findall(r'\"(.*?)\"', text)  # Texto entre comillas dobles
+
+    protected = text
+    placeholders = {}
+
+    # Reemplazar citas textuales con marcadores
+    for idx, quote in enumerate(quotes):
+        placeholder = f"__QUOTE_{idx}__"
+        placeholders[placeholder] = quote
+        protected = protected.replace(f'"{quote}"', placeholder)
+
+    # Reemplazar notas a pie de página con marcadores
+    for idx, footnote in enumerate(footnotes):
+        placeholder = f"__FOOTNOTE_{idx}__"
+        placeholders[placeholder] = footnote
+        protected = protected.replace(footnote, placeholder)
+
+    return protected, placeholders
+
+# Función para restaurar notas a pie de página y citas textuales
+def restore_text(text, placeholders):
+    restored = text
+    for placeholder, original in placeholders.items():
+        restored = restored.replace(placeholder, original)
+    return restored
+
 # Función para llamar a la API de Together
 def correct_text(text, api_key):
     url = "https://api.together.xyz/v1/chat/completions"
@@ -97,9 +126,17 @@ if st.button("Corregir Texto"):
             st.error(f"El texto excede el límite de 2000 palabras. Actualmente tiene {total_words} palabras.")
         else:
             with st.spinner("Corrigiendo el texto..."):
+                # Proteger las notas a pie de página y las citas textuales
+                protected_text, placeholders = protect_text(user_input)
+
+                # Llamar a la API con el texto protegido
                 api_key = st.secrets["together_api_key"]
-                corrected = correct_text(user_input, api_key)
-                if corrected:
+                corrected_protected = correct_text(protected_text, api_key)
+
+                if corrected_protected:
+                    # Restaurar las notas a pie de página y las citas textuales
+                    corrected = restore_text(corrected_protected, placeholders)
+
                     # Resaltar los cambios
                     highlighted_text = highlight_changes(user_input, corrected)
 
