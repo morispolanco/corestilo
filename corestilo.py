@@ -25,19 +25,35 @@ def contar_palabras(texto):
     palabras = re.findall(r'\b\w+\b', texto)
     return len(palabras)
 
-# Función para resaltar diferencias
+# Función para resaltar diferencias con colores específicos
 def resaltar_diferencias(original, corregido):
-    # Escapar HTML para evitar problemas de formato
-    original_esc = escape(original)
-    corregido_esc = escape(corregido)
-    
-    # Crear un objeto Differ
-    differ = difflib.HtmlDiff()
-    
-    # Generar la tabla de diferencias
-    diff_html = differ.make_table(original_esc.splitlines(), corregido_esc.splitlines(), fromdesc='Original', todesc='Corregido', context=True, numlines=2)
-    
-    return diff_html
+    """
+    Resalta las diferencias entre el texto original y el corregido.
+    - Rojo para eliminaciones
+    - Verde para adiciones
+    - Amarillo para modificaciones
+    """
+    matcher = difflib.SequenceMatcher(None, original, corregido)
+    result = []
+
+    for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+        if tag == 'equal':
+            result.append(escape(corregido[j1:j2]))
+        elif tag == 'delete':
+            # Eliminaciones: Mostrar texto eliminado en rojo con tachado
+            eliminado = escape(original[i1:i2])
+            result.append(f"<span style='color:red;text-decoration:line-through;'>{eliminado}</span>")
+        elif tag == 'insert':
+            # Adiciones: Mostrar texto añadido en verde
+            añadido = escape(corregido[j1:j2])
+            result.append(f"<span style='color:green;'>{añadido}</span>")
+        elif tag == 'replace':
+            # Modificaciones: Mostrar texto original en rojo tachado y el nuevo en amarillo
+            original_text = escape(original[i1:i2])
+            corregido_text = escape(corregido[j1:j2])
+            result.append(f"<span style='color:red;text-decoration:line-through;'>{original_text}</span> <span style='background-color:yellow;'>{corregido_text}</span>")
+    # Unir todas las partes
+    return ''.join(result)
 
 # Entrada de texto por el usuario
 texto_usuario = st.text_area(
