@@ -32,17 +32,21 @@ def extraer_citas(texto):
     Encuentra todas las citas textuales en el texto y las reemplaza por marcadores únicos.
     Retorna el texto modificado y un diccionario de marcadores a citas.
     """
-    patron = r'(["\'])(?:(?=(\\?))\2.)*?\1'
-    citas = re.findall(patron, texto)
     citas_unicas = {}
     texto_modificado = texto
-    for idx, cita in enumerate(citas, start=1):
-        marcador = f"__CITA_{idx}__"
-        # Extraer el texto completo de la cita
-        cita_completa = re.search(r'(["\'])(?:(?=(\\?))\2.)*?\1', texto_modificado).group(0)
+    marcador_idx = 1
+
+    # Patrón para encontrar texto entre comillas dobles o simples
+    patron_citas = r'(["\'])(?:(?=(\\?))\2.)*?\1'
+
+    # Encontrar todas las citas
+    for match in re.finditer(patron_citas, texto):
+        cita_completa = match.group(0)
+        marcador = f"__QUOTE_{marcador_idx}__"
         citas_unicas[marcador] = cita_completa
-        # Reemplazar la primera ocurrencia de la cita por el marcador
         texto_modificado = texto_modificado.replace(cita_completa, marcador, 1)
+        marcador_idx += 1
+
     return texto_modificado, citas_unicas
 
 # Función para extraer notas a pie de página y reemplazarlas por marcadores
@@ -53,26 +57,33 @@ def extraer_pies(texto):
     """
     pies_unicos = {}
     texto_modificado = texto
+    marcador_ref_idx = 1
+    marcador_def_idx = 1
 
     # Patrón para referencias de notas a pie de página, por ejemplo: [^1], [^a], etc.
     patron_referencias = r'\[\^[^\]]+\]'
-    referencias = re.findall(patron_referencias, texto_modificado)
+    referencias = re.finditer(patron_referencias, texto)
 
     # Reemplazar referencias
-    for idx, ref in enumerate(referencias, start=1):
-        marcador = f"__PIE_REF_{idx}__"
+    for match in referencias:
+        ref = match.group(0)
+        marcador = f"__FOOTNOTE_REF_{marcador_ref_idx}__"
         pies_unicos[marcador] = ref
         texto_modificado = texto_modificado.replace(ref, marcador, 1)
+        marcador_ref_idx += 1
 
     # Patrón para definiciones de notas a pie de página, por ejemplo: [^1]: Texto de la nota
+    # Incluye múltiples líneas si están indentadas
     patron_definiciones = r'\[\^[^\]]+\]:\s*.*(?:\n\s+.*)*'
-    definiciones = re.findall(patron_definiciones, texto_modificado, re.MULTILINE)
+    definiciones = re.finditer(patron_definiciones, texto_modificado, re.MULTILINE)
 
     # Reemplazar definiciones
-    for idx, defn in enumerate(definiciones, start=1):
-        marcador = f"__PIE_DEF_{idx}__"
+    for match in definiciones:
+        defn = match.group(0)
+        marcador = f"__FOOTNOTE_DEF_{marcador_def_idx}__"
         pies_unicos[marcador] = defn
         texto_modificado = texto_modificado.replace(defn, marcador, 1)
+        marcador_def_idx += 1
 
     return texto_modificado, pies_unicos
 
@@ -203,7 +214,7 @@ if st.button("Corregir Texto"):
 
                     with col1:
                         st.subheader("Texto Corregido:")
-                        st.write(mensaje_corregido_final)
+                        st.markdown(mensaje_corregido_final)
 
                     with col2:
                         st.subheader("Cambios Realizados:")
