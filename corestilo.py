@@ -16,8 +16,8 @@ st.set_page_config(
 st.title("📝 Corrector de Texto: Ortografía, Gramática y Estilo")
 st.write(
     """
-    Esta aplicación permite corregir la ortografía, gramática y estilo de un texto de hasta **1000 palabras** utilizando la API de Together. 
-    **Nota:** El texto encerrado entre comillas (citas textuales) no será alterado durante la corrección.
+    Esta aplicación permite corregir la ortografía, gramática y estilo de un texto de hasta **1000 palabras** utilizando la API de Together.
+    **Nota:** El texto encerrado entre comillas (citas textuales) y las notas a pie de página no serán alterados durante la corrección.
     """
 )
 
@@ -26,13 +26,12 @@ def contar_palabras(texto):
     palabras = re.findall(r'\b\w+\b', texto)
     return len(palabras)
 
-# Función para extraer citas y reemplazarlas por marcadores
+# Función para extraer citas textuales y reemplazarlas por marcadores
 def extraer_citas(texto):
     """
     Encuentra todas las citas textuales en el texto y las reemplaza por marcadores únicos.
     Retorna el texto modificado y un diccionario de marcadores a citas.
     """
-    # Patrón para encontrar texto entre comillas dobles o simples
     patron = r'(["\'])(?:(?=(\\?))\2.)*?\1'
     citas = re.findall(patron, texto)
     citas_unicas = {}
@@ -40,19 +39,59 @@ def extraer_citas(texto):
     for idx, cita in enumerate(citas, start=1):
         marcador = f"__CITA_{idx}__"
         # Extraer el texto completo de la cita
-        cita_completa = cita[0] + re.search(r'(["\'])(?:(?=(\\?))\2.)*?\1', texto_modificado).group(0)[1:-1] + cita[0]
+        cita_completa = re.search(r'(["\'])(?:(?=(\\?))\2.)*?\1', texto_modificado).group(0)
         citas_unicas[marcador] = cita_completa
         # Reemplazar la primera ocurrencia de la cita por el marcador
         texto_modificado = texto_modificado.replace(cita_completa, marcador, 1)
     return texto_modificado, citas_unicas
 
-# Función para reintegrar las citas en el texto corregido
+# Función para extraer notas a pie de página y reemplazarlas por marcadores
+def extraer_pies(texto):
+    """
+    Encuentra todas las referencias y definiciones de notas a pie de página en el texto y las reemplaza por marcadores únicos.
+    Retorna el texto modificado y un diccionario de marcadores a pies de página.
+    """
+    pies_unicos = {}
+    texto_modificado = texto
+
+    # Patrón para referencias de notas a pie de página, por ejemplo: [^1], [^a], etc.
+    patron_referencias = r'\[\^[^\]]+\]'
+    referencias = re.findall(patron_referencias, texto_modificado)
+
+    # Reemplazar referencias
+    for idx, ref in enumerate(referencias, start=1):
+        marcador = f"__PIE_REF_{idx}__"
+        pies_unicos[marcador] = ref
+        texto_modificado = texto_modificado.replace(ref, marcador, 1)
+
+    # Patrón para definiciones de notas a pie de página, por ejemplo: [^1]: Texto de la nota
+    patron_definiciones = r'\[\^[^\]]+\]:\s*.*'
+    definiciones = re.findall(patron_definiciones, texto_modificado, re.MULTILINE)
+
+    # Reemplazar definiciones
+    for idx, defn in enumerate(definiciones, start=1):
+        marcador = f"__PIE_DEF_{idx}__"
+        pies_unicos[marcador] = defn
+        texto_modificado = texto_modificado.replace(defn, marcador, 1)
+
+    return texto_modificado, pies_unicos
+
+# Función para reintegrar citas textuales en el texto corregido
 def reintegrar_citas(texto_corregido, citas_unicas):
     """
     Reemplaza los marcadores en el texto corregido por las citas originales.
     """
     for marcador, cita in citas_unicas.items():
         texto_corregido = texto_corregido.replace(marcador, cita)
+    return texto_corregido
+
+# Función para reintegrar pies de página en el texto corregido
+def reintegrar_pies(texto_corregido, pies_unicos):
+    """
+    Reemplaza los marcadores en el texto corregido por las notas a pie de página originales.
+    """
+    for marcador, pie in pies_unicos.items():
+        texto_corregido = texto_corregido.replace(marcador, pie)
     return texto_corregido
 
 # Función para resaltar diferencias con colores específicos
@@ -107,6 +146,9 @@ if st.button("Corregir Texto"):
                 # Extraer citas y obtener el texto sin alterar las citas
                 texto_sin_citas, citas_unicas = extraer_citas(texto_usuario)
 
+                # Extraer pies de página y obtener el texto sin alterar las notas
+                texto_sin_citas_pies, pies_unicos = extraer_pies(texto_sin_citas)
+
                 # Obtener la clave de API de los secretos de Streamlit
                 api_key = st.secrets["TOGETHER_API_KEY"]
 
@@ -121,8 +163,8 @@ if st.button("Corregir Texto"):
 
                 # Crear el mensaje para la API
                 prompt = (
-                    "Por favor, corrige el siguiente texto mejorando la ortografía, gramática y estilo:\n\n"
-                    f"{texto_sin_citas}"
+                    "Por favor, corrige el siguiente texto mejorando la ortografía, gramática y estilo, manteniendo intactas las citas textuales y las notas a pie de página:\n\n"
+                    f"{texto_sin_citas_pies}"
                 )
 
                 # Configurar el payload
@@ -150,20 +192,23 @@ if st.button("Corregir Texto"):
                     # Extraer el contenido de la respuesta
                     mensaje_corregido = respuesta_json.get("choices", [{}])[0].get("message", {}).get("content", "")
 
-                    # Reintegrar las citas originales en el texto corregido
-                    mensaje_corregido_con_citas = reintegrar_citas(mensaje_corregido, citas_unicas)
+                    # Reintegrar las notas a pie de página originales en el texto corregido
+                    mensaje_corregido_con_pies = reintegrar_pies(mensaje_corregido, pies_unicos)
+
+                    # Reintegrar las citas originales en el texto corregido con pies
+                    mensaje_corregido_final = reintegrar_citas(mensaje_corregido_con_pies, citas_unicas)
 
                     # Mostrar el texto corregido en dos columnas
                     col1, col2 = st.columns(2)
 
                     with col1:
                         st.subheader("Texto Corregido:")
-                        st.write(mensaje_corregido_con_citas)
+                        st.write(mensaje_corregido_final)
 
                     with col2:
                         st.subheader("Cambios Realizados:")
-                        # Resaltar diferencias entre el texto original y el corregido con citas reintegradas
-                        diff_html = resaltar_diferencias(texto_usuario, mensaje_corregido_con_citas)
+                        # Resaltar diferencias entre el texto original y el corregido con citas y pies reintegrados
+                        diff_html = resaltar_diferencias(texto_usuario, mensaje_corregido_final)
                         # Mostrar el HTML de las diferencias
                         st.markdown(diff_html, unsafe_allow_html=True)
                 else:
