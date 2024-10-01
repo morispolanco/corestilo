@@ -1,2 +1,5 @@
-requests 
-streamlit 
+streamlit>=1.0.0
+requests>=2.25.0
+streamlit-quill>=0.1.4
+beautifulsoup4>=4.9.3
+lxml>=4.6.3
