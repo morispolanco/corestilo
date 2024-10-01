@@ -65,7 +65,7 @@ def extraer_pies(texto):
         texto_modificado = texto_modificado.replace(ref, marcador, 1)
 
     # Patrón para definiciones de notas a pie de página, por ejemplo: [^1]: Texto de la nota
-    patron_definiciones = r'\[\^[^\]]+\]:\s*.*'
+    patron_definiciones = r'\[\^[^\]]+\]:\s*.*(?:\n\s+.*)*'
     definiciones = re.findall(patron_definiciones, texto_modificado, re.MULTILINE)
 
     # Reemplazar definiciones
