@@ -4,55 +4,48 @@ import re
 from difflib import SequenceMatcher
 from bs4 import BeautifulSoup
 from html import escape
+from docx import Document
+from io import BytesIO
 
 # Configuración de la página
-st.set_page_config(page_title="Corrector de Texto con Resaltado de Cambios", layout="wide")
+st.set_page_config(page_title="Corrector de DOCX con Resaltado de Cambios", layout="wide")
 
 # Título de la aplicación
-st.title("Corrector de Texto con Resaltado de Cambios")
+st.title("Corrector de DOCX con Resaltado de Cambios")
 
 # Instrucciones para el usuario
 st.markdown("""
 **Instrucciones:**
-1. **Pega tu texto** (máximo 2000 palabras) en el cuadro de texto a continuación. Asegúrate de que las notas a pie de página estén en formato de superíndices y que las citas textuales estén entre comillas dobles `"cita"`.
-2. La aplicación convertirá automáticamente los superíndices en números entre corchetes `[n]` que referencian a las notas a pie de página.
-3. La aplicación corregirá la ortografía, gramática y estilo del texto principal.
-4. **Las notas a pie de página y citas textuales no serán modificadas.**
-5. Los cambios se resaltarán en colores:
+1. **Sube un archivo DOCX** que contenga el texto a corregir. Asegúrate de que las notas a pie de página estén en el formato `[1]`, `[2]`, etc., y que las citas textuales estén entre comillas dobles `"cita"`.
+2. La aplicación corregirá la ortografía, gramática y estilo del texto principal.
+3. **Las notas a pie de página y citas textuales no serán modificadas.**
+4. Los cambios se resaltarán en colores:
    - 🟨 **Amarillo**: Cambios realizados.
    - 🟥 **Rojo**: Eliminaciones.
    - 🟩 **Verde**: Adiciones.
 """)
 
-# Cuadro de texto para la entrada del usuario
-user_input = st.text_area("Pega tu texto aquí:", height=400)
+# Función para extraer texto del DOCX y convertir superíndices en [n]
+def extract_text_from_docx(file):
+    doc = Document(file)
+    full_text = []
+    footnote_map = {}  # Mapa para almacenar notas a pie de página si es necesario
+    footnote_counter = 1  # Contador de notas a pie
 
-# Mapeo de caracteres superíndices a números
-SUPERSCRIPT_MAP = {
-    '⁰': '0',
-    '¹': '1',
-    '²': '2',
-    '³': '3',
-    '⁴': '4',
-    '⁵': '5',
-    '⁶': '6',
-    '⁷': '7',
-    '⁸': '8',
-    '⁹': '9'
-}
-
-# Función para convertir superíndices en [n]
-def convert_superscripts(text):
-    # Busca todos los superíndices en el texto y los reemplaza por [n]
-    def replace_superscript(match):
-        superscript = match.group(0)
-        number = ''.join(SUPERSCRIPT_MAP.get(char, char) for char in superscript)
-        return f'[{number}]'
-
-    # Patrón para encontrar superíndices
-    pattern = '[' + ''.join(SUPERSCRIPT_MAP.keys()) + ']+'
-    converted_text = re.sub(pattern, replace_superscript, text)
-    return converted_text
+    for para in doc.paragraphs:
+        para_text = ""
+        for run in para.runs:
+            if run.font.superscript:
+                # Detectar si el texto del run es un número
+                if run.text.isdigit():
+                    # Reemplazar superíndice con [n]
+                    para_text += f"[{run.text}]"
+                else:
+                    para_text += run.text
+            else:
+                para_text += run.text
+        full_text.append(para_text)
+    return '\n'.join(full_text)
 
 # Función para contar palabras
 def count_words(text):
@@ -146,41 +139,47 @@ def highlight_changes(original, corrected):
             highlighted += f"<span style='background-color: green;'>{escape(corrected[j1:j2])}</span>"
     return highlighted
 
-# Botón para iniciar la corrección
-if st.button("Corregir Texto"):
-    if not user_input.strip():
-        st.warning("Por favor, ingresa un texto para corregir.")
-    else:
-        # Convertir superíndices en [n]
-        converted_text = convert_superscripts(user_input)
-        
-        # Contar palabras en el texto convertido
-        total_words = count_words(converted_text)
-        if total_words > 2000:
-            st.error(f"El texto excede el límite de 2000 palabras. Actualmente tiene {total_words} palabras.")
+# Área para subir el archivo DOCX
+uploaded_file = st.file_uploader("Sube tu archivo DOCX aquí:", type=["docx"])
+
+if uploaded_file is not None:
+    # Extraer el texto del archivo DOCX y convertir superíndices en [n]
+    text = extract_text_from_docx(uploaded_file)
+
+    st.markdown("### Texto Original")
+    st.write(text)
+
+    # Botón para iniciar la corrección
+    if st.button("Corregir Texto"):
+        if not text.strip():
+            st.warning("El archivo subido está vacío.")
         else:
-            with st.spinner("Corrigiendo el texto..."):
-                # Proteger las notas a pie de página y las citas textuales
-                protected_text, placeholders = protect_text(converted_text)
+            total_words = count_words(text)
+            if total_words > 2000:
+                st.error(f"El texto excede el límite de 2000 palabras. Actualmente tiene {total_words} palabras.")
+            else:
+                with st.spinner("Corrigiendo el texto..."):
+                    # Proteger las notas a pie de página y las citas textuales
+                    protected_text, placeholders = protect_text(text)
 
-                # Llamar a la API con el texto protegido
-                api_key = st.secrets["together_api_key"]
-                corrected_protected = correct_text(protected_text, api_key)
+                    # Llamar a la API con el texto protegido
+                    api_key = st.secrets["together_api_key"]
+                    corrected_protected = correct_text(protected_text, api_key)
 
-                if corrected_protected:
-                    # Restaurar las notas a pie de página y las citas textuales
-                    corrected = restore_text(corrected_protected, placeholders)
+                    if corrected_protected:
+                        # Restaurar las notas a pie de página y las citas textuales
+                        corrected = restore_text(corrected_protected, placeholders)
 
-                    # Resaltar los cambios
-                    highlighted_text = highlight_changes(converted_text, corrected)
+                        # Resaltar los cambios
+                        highlighted_text = highlight_changes(text, corrected)
 
-                    # Dividir la página en dos columnas
-                    col1, col2 = st.columns(2)
+                        # Dividir la página en dos columnas
+                        col1, col2 = st.columns(2)
 
-                    with col1:
-                        st.header("Texto Original")
-                        st.write(user_input)
+                        with col1:
+                            st.header("Texto Original")
+                            st.write(text)
 
-                    with col2:
-                        st.header("Texto Corregido")
-                        st.markdown(f"<div style='white-space: pre-wrap;'>{highlighted_text}</div>", unsafe_allow_html=True)
+                        with col2:
+                            st.header("Texto Corregido")
+                            st.markdown(f"<div style='white-space: pre-wrap;'>{highlighted_text}</div>", unsafe_allow_html=True)
