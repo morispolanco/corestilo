@@ -5,7 +5,7 @@ from langdetect import detect, DetectorFactory
 from time import sleep
 
 # Asegurar resultados consistentes de langdetect
-DetectorFactory.seed = 0  
+DetectorFactory.seed = 0
 
 # Funciones auxiliares para manejar las notas a pie de página
 def extract_footnotes(text):
@@ -49,6 +49,10 @@ def replace_footnote_markers(text):
     # Reemplaza caracteres superscript con [number]
     for sup, num in superscript_map.items():
         text = text.replace(sup, f'[{num}]')
+
+    # Manejar múltiples dígitos en superscript (por ejemplo, ¹² -> [12])
+    # Encuentra todas las ocurrencias de [n][m]... y combina los números
+    text = re.sub(r'\[(\d+)\]', lambda m: '[' + ''.join(m.group(1)) + ']', text)
 
     return text
 
