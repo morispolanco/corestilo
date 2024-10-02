@@ -1,7 +1,5 @@
 import streamlit as st
 import requests
-import difflib
-import re
 from langdetect import detect, DetectorFactory
 from time import sleep
 
@@ -46,10 +44,18 @@ else:
             try:
                 # Actualizar progreso inicial
                 status_text.text("Detectando el idioma del texto...")
+                progress_bar.progress(10)
                 sleep(0.5)  # Simular tiempo de procesamiento
 
                 # Detectar el idioma del texto
-                idioma = detect(user_input)
+                try:
+                    idioma = detect(user_input)
+                except Exception as e:
+                    st.error(f"No se pudo detectar el idioma: {e}")
+                    progress_bar.empty()
+                    status_text.empty()
+                    st.stop()
+
                 idiomas = {
                     'es': 'español',
                     'en': 'inglés',
@@ -59,9 +65,8 @@ else:
                 }
                 idioma_detectado = idiomas.get(idioma, 'idioma desconocido')
 
-                progress_bar.progress(20)
+                progress_bar.progress(30)
                 status_text.text(f"Idioma detectado: {idioma_detectado}")
-
                 sleep(0.5)  # Simular tiempo de procesamiento
 
                 progress_bar.progress(40)
@@ -100,9 +105,8 @@ else:
                     "stream": False  # Para simplificar, usamos stream=False
                 }
 
-                progress_bar.progress(60)
+                progress_bar.progress(50)
                 status_text.text("Enviando solicitud a la API...")
-
                 sleep(0.5)  # Simular tiempo de procesamiento
 
                 # Realizar la solicitud a la API
@@ -110,51 +114,28 @@ else:
                 response.raise_for_status()
                 result = response.json()
 
-                progress_bar.progress(80)
+                progress_bar.progress(70)
                 status_text.text("Procesando la respuesta...")
-
                 sleep(0.5)  # Simular tiempo de procesamiento
 
                 # Extraer el texto corregido
-                corrected_text = result["choices"][0]["message"]["content"]
+                try:
+                    corrected_text = result["choices"][0]["message"]["content"]
+                except (KeyError, IndexError) as e:
+                    st.error(f"Formato de respuesta inesperado de la API: {e}")
+                    progress_bar.empty()
+                    status_text.empty()
+                    st.stop()
 
-                # Función para resaltar cambios
-                def highlight_differences(original, corrected):
-                    # Usar difflib para obtener las diferencias
-                    diff = difflib.ndiff(original.split(), corrected.split())
-                    result = []
-                    for word in diff:
-                        if word.startswith('- '):
-                            # Eliminado: rojo
-                            result.append(f'<span style="color:red;">{word[2:]}</span>')
-                        elif word.startswith('+ '):
-                            # Agregado: verde
-                            result.append(f'<span style="color:green;">{word[2:]}</span>')
-                        elif word.startswith('? '):
-                            # Cambiado: amarillo
-                            result.append(f'<span style="background-color:yellow;">{word[2:]}</span>')
-                        else:
-                            # Sin cambios
-                            result.append(word[2:])
-                    return ' '.join(result)
-
-                # Generar el texto con resaltado
-                highlighted_text = highlight_differences(user_input, corrected_text)
+                progress_bar.progress(90)
+                status_text.text("Finalizando...")
 
                 progress_bar.progress(100)
                 status_text.text("¡Corrección completada!")
 
-                # Mostrar los resultados en dos columnas
-                col1, col2 = st.columns(2)
-
-                with col1:
-                    st.subheader("Texto Corregido")
-                    st.write(corrected_text)
-
-                with col2:
-                    st.subheader("Cambios Realizados")
-                    # Usar Markdown con HTML para los colores
-                    st.markdown(highlighted_text, unsafe_allow_html=True)
+                # Mostrar el texto corregido
+                st.subheader("Texto Corregido")
+                st.write(corrected_text)
 
             except requests.exceptions.RequestException as e:
                 st.error(f"Ocurrió un error al comunicarse con la API: {e}")
