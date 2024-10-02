@@ -3,3 +3,4 @@ requests
 streamlit-quill
 beautifulsoup4
 lxml
+python-docx
