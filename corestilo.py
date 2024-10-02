@@ -2,10 +2,15 @@ import streamlit as st
 import requests
 import difflib
 import re
+from langdetect import detect, DetectorFactory
+from time import sleep
+
+# Asegurar resultados consistentes de langdetect
+DetectorFactory.seed = 0
 
 # Configuración de la página
 st.set_page_config(
-    page_title="Corrector de Texto",
+    page_title="Corrector de Texto Multilingüe",
     layout="wide",
 )
 
@@ -34,18 +39,44 @@ else:
         if word_count == 0:
             st.warning("Por favor, ingresa algún texto para corregir.")
         else:
-            with st.spinner("Corrigiendo el texto..."):
+            # Iniciar la barra de progreso
+            progress_bar = st.progress(0)
+            status_text = st.empty()
+
+            try:
+                # Actualizar progreso inicial
+                status_text.text("Detectando el idioma del texto...")
+                sleep(0.5)  # Simular tiempo de procesamiento
+
+                # Detectar el idioma del texto
+                idioma = detect(user_input)
+                idiomas = {
+                    'es': 'español',
+                    'en': 'inglés',
+                    'fr': 'francés',
+                    'de': 'alemán',
+                    # Agrega más idiomas según sea necesario
+                }
+                idioma_detectado = idiomas.get(idioma, 'idioma desconocido')
+
+                progress_bar.progress(20)
+                status_text.text(f"Idioma detectado: {idioma_detectado}")
+
+                sleep(0.5)  # Simular tiempo de procesamiento
+
+                progress_bar.progress(40)
+                status_text.text("Preparando la solicitud a la API...")
+
                 # Obtener la clave de API de los secretos
                 api_key = st.secrets["TOGETHER_API_KEY"]
 
                 # Definir la URL de la API
                 api_url = "https://api.together.xyz/v1/chat/completions"
 
-                # Preparar los mensajes para la API
                 # Instrucción para corregir el texto sin alterar las citas
                 prompt = (
-                    "Corrige la ortografía, gramática y estilo del siguiente texto sin modificar "
-                    "las citas textuales (encerradas entre comillas simples, dobles o angulares):\n\n"
+                    f"Corrige la ortografía, gramática y estilo del siguiente texto sin modificar "
+                    f"las citas textuales (encerradas entre comillas simples, dobles o angulares) en {idioma_detectado}:\n\n"
                     f"{user_input}"
                 )
 
@@ -69,50 +100,71 @@ else:
                     "stream": False  # Para simplificar, usamos stream=False
                 }
 
-                try:
-                    response = requests.post(api_url, headers=headers, json=payload)
-                    response.raise_for_status()
-                    result = response.json()
+                progress_bar.progress(60)
+                status_text.text("Enviando solicitud a la API...")
 
-                    # Extraer el texto corregido
-                    corrected_text = result["choices"][0]["message"]["content"]
+                sleep(0.5)  # Simular tiempo de procesamiento
 
-                    # Función para resaltar cambios
-                    def highlight_differences(original, corrected):
-                        # Usar difflib para obtener las diferencias
-                        diff = difflib.ndiff(original.split(), corrected.split())
-                        result = []
-                        for word in diff:
-                            if word.startswith('- '):
-                                # Eliminado: rojo
-                                result.append(f'<span style="color:red;">{word[2:]}</span>')
-                            elif word.startswith('+ '):
-                                # Agregado: verde
-                                result.append(f'<span style="color:green;">{word[2:]}</span>')
-                            elif word.startswith('? '):
-                                # Cambiado: amarillo
-                                pass  # Podemos ignorar estos indicadores
-                            else:
-                                # Sin cambios
-                                result.append(word[2:])
-                        return ' '.join(result)
+                # Realizar la solicitud a la API
+                response = requests.post(api_url, headers=headers, json=payload)
+                response.raise_for_status()
+                result = response.json()
 
-                    # Generar el texto con resaltado
-                    highlighted_text = highlight_differences(user_input, corrected_text)
+                progress_bar.progress(80)
+                status_text.text("Procesando la respuesta...")
 
-                    # Mostrar los resultados en dos columnas
-                    col1, col2 = st.columns(2)
+                sleep(0.5)  # Simular tiempo de procesamiento
 
-                    with col1:
-                        st.subheader("Texto Corregido")
-                        st.write(corrected_text)
+                # Extraer el texto corregido
+                corrected_text = result["choices"][0]["message"]["content"]
 
-                    with col2:
-                        st.subheader("Cambios Realizados")
-                        # Usar Markdown con HTML para los colores
-                        st.markdown(highlighted_text, unsafe_allow_html=True)
+                # Función para resaltar cambios
+                def highlight_differences(original, corrected):
+                    # Usar difflib para obtener las diferencias
+                    diff = difflib.ndiff(original.split(), corrected.split())
+                    result = []
+                    for word in diff:
+                        if word.startswith('- '):
+                            # Eliminado: rojo
+                            result.append(f'<span style="color:red;">{word[2:]}</span>')
+                        elif word.startswith('+ '):
+                            # Agregado: verde
+                            result.append(f'<span style="color:green;">{word[2:]}</span>')
+                        elif word.startswith('? '):
+                            # Cambiado: amarillo
+                            result.append(f'<span style="background-color:yellow;">{word[2:]}</span>')
+                        else:
+                            # Sin cambios
+                            result.append(word[2:])
+                    return ' '.join(result)
 
-                except requests.exceptions.RequestException as e:
-                    st.error(f"Ocurrió un error al comunicarse con la API: {e}")
-                except KeyError:
-                    st.error("Respuesta inesperada de la API.")
+                # Generar el texto con resaltado
+                highlighted_text = highlight_differences(user_input, corrected_text)
+
+                progress_bar.progress(100)
+                status_text.text("¡Corrección completada!")
+
+                # Mostrar los resultados en dos columnas
+                col1, col2 = st.columns(2)
+
+                with col1:
+                    st.subheader("Texto Corregido")
+                    st.write(corrected_text)
+
+                with col2:
+                    st.subheader("Cambios Realizados")
+                    # Usar Markdown con HTML para los colores
+                    st.markdown(highlighted_text, unsafe_allow_html=True)
+
+            except requests.exceptions.RequestException as e:
+                st.error(f"Ocurrió un error al comunicarse con la API: {e}")
+                progress_bar.empty()
+                status_text.empty()
+            except KeyError:
+                st.error("Respuesta inesperada de la API.")
+                progress_bar.empty()
+                status_text.empty()
+            except Exception as e:
+                st.error(f"Ocurrió un error inesperado: {e}")
+                progress_bar.empty()
+                status_text.empty()
