@@ -5,7 +5,7 @@ from langdetect import detect, DetectorFactory
 from time import sleep
 
 # Asegurar resultados consistentes de langdetect
-DetectorFactory.seed = 0
+DetectorFactory.seed = 0  
 
 # Funciones auxiliares para manejar las notas a pie de página
 def extract_footnotes(text):
